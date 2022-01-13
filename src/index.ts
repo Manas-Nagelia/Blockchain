@@ -1,117 +1,119 @@
-import { SHA256 as hash } from "crypto-js";
-import "colors";
+import * as crypto from "crypto";
 
-interface GenesisBlock {
-  isGenesis: boolean;
+class Transaction {
+  constructor(
+    public amount: number,
+    public payer: string, // public key
+    public payee: string // public key
+  ) {}
+
+  toString() {
+    return JSON.stringify(this); // stringify the whole Transaction object
+  }
 }
 
-interface BlockData {
-  from: string;
-  to: string;
-  amount: number;
-}
-
-/**
- * Creates a new block in the blockchain
- */
 class Block {
-  public data: BlockData | GenesisBlock;
-  private _hash: string;
-  private _previousHash: string;
-  private timestamp: Date;
-  private proofOfWork = 0;
-  /**
-   * @param  {string} previousHash - Hash of the previous block. Set to 0 if this is the first block.
-   * @param  {BlockData | GenesisBlock} data - Data to be stored in the block
-   */
-  constructor(previousHash: string, data: BlockData | GenesisBlock) {
-    this.data = data;
-    this._hash = this.calculateHash();
-    this._previousHash = previousHash;
-    this.timestamp = new Date();
-    this.proofOfWork = 0;
-  }
+  public nonce = Math.round(Math.random() * 999999999);
 
-  get previousHash() {
-    return this._previousHash;
-  }
+  constructor(
+    public prevHash: string,
+    public transaction: Transaction,
+    public ts = Date.now()
+  ) {}
 
   get hash() {
-    return this._hash;
-  }
-
-  calculateHash() {
-    return hash(
-      this._previousHash +
-        JSON.stringify(this.data) +
-        this.timestamp +
-        this.proofOfWork
-    ).toString();
-  }
-
-  mine(difficulty: number) {
-    while (!this._hash.startsWith("0".repeat(difficulty))) {
-      this.proofOfWork++;
-      this._hash = this.calculateHash();
-    }
+    const str = JSON.stringify(this); // stringify the prevHash, transaction, and timestamp
+    const hash = crypto.createHash("SHA256");
+    hash.update(str).end();
+    return hash.digest("hex");
   }
 }
 
-class Blockchain {
-  private _chain: Block[];
+class Chain {
+  public static instance = new Chain(); // Singleton instance, only one chain can exist
+
+  chain: Block[];
 
   constructor() {
-    let data: GenesisBlock = { isGenesis: true };
-    let genesisBlock = new Block("0", data);
-    this._chain = [genesisBlock];
+    this.chain = [new Block("", new Transaction(100, "Genesis", "Satoshi"))];
   }
 
-  get chain() {
-    return this._chain;
+  get lastBlock() {
+    return this.chain[this.chain.length - 1];
   }
 
-  addBlock(data: BlockData) {
-    let lastBlock = this._chain[this._chain.length - 1];
-    let newBlock = new Block(lastBlock.hash, data);
-    newBlock.mine(6); // Finds the hash of the new block
-    this._chain.push(newBlock);
-  }
+  mine(nonce: number) {
+    let solution = 1;
+    console.log("⛏️ mining...");
 
-  isValid() {
-    for (let i = 1; i < this._chain.length; i++) {
-      const currentBlock = this._chain[i];
-      const previousBlock = this._chain[i - 1];
+    while (true) {
+      const hash = crypto.createHash("MD5");
+      hash.update((nonce + solution).toString()).end();
 
-      if (currentBlock.hash != currentBlock.calculateHash()) return false;
-      if (currentBlock.previousHash != previousBlock.hash) return false;
+      const attempt = hash.digest("hex");
+
+      if (attempt.substring(0, 4) === "0000") {
+        console.log(`Solved ${solution}`);
+        return solution; // Proof of work
+      }
+
+      solution += 1;
     }
-    return true;
+  }
+
+  addBlock(
+    transaction: Transaction,
+    senderPublicKey: string,
+    signature: Buffer
+  ) {
+    const verifier = crypto.createVerify("SHA256");
+    verifier.update(transaction.toString());
+
+    const isValid = verifier.verify(senderPublicKey, signature);
+
+    if (isValid) {
+      const newBlock = new Block(this.lastBlock.hash, transaction);
+      this.mine(newBlock.nonce);
+      this.chain.push(newBlock);
+    }
   }
 }
 
-let blockchain = new Blockchain();
+class Wallet {
+  public publicKey: string; // receiving money, like username
+  public privateKey: string; // spending money, like password
 
-let blockOne: BlockData = {
-  from: "Viet",
-  to: "David",
-  amount: 100,
-};
+  constructor() {
+    const keypair = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
 
-let blockTwo: BlockData = {
-  from: "Adam",
-  to: "Beck",
-  amount: 150,
-};
+    this.publicKey = keypair.publicKey;
+    this.privateKey = keypair.privateKey;
+  }
 
-blockchain.addBlock(blockOne);
-blockchain.addBlock(blockTwo);
-let davidData: GenesisBlock | BlockData = blockchain.chain[1].data;
-if ("amount" in davidData) davidData.amount += 200;
-console.log(blockchain.chain);
+  sendMoney(amount: number, payeePublicKey: string) {
+    const transaction = new Transaction(amount, this.publicKey, payeePublicKey);
 
-let isValid = blockchain.isValid();
-if (isValid) {
-  console.log("Blockchain is valid".green);
-} else {
-  console.log("Blockchain is invalid".red);
+    const sign = crypto.createSign("SHA256");
+    sign.update(transaction.toString()).end(); // creates and adds the transaction to the sign object
+
+    const signature = sign.sign(this.privateKey); // signs the transaction with the private key
+
+    Chain.instance.addBlock(transaction, this.publicKey, signature);
+  }
 }
+
+// example usage
+
+const satoshi = new Wallet();
+const bob = new Wallet();
+const alice = new Wallet();
+
+satoshi.sendMoney(50, bob.publicKey);
+bob.sendMoney(23, alice.publicKey);
+alice.sendMoney(5, bob.publicKey);
+
+console.log(Chain.instance);
