@@ -32,13 +32,75 @@ class Block {
   }
 }
 
+class Wallet {
+  public publicKey: string; // receiving money, like username
+  public privateKey: string; // spending money, like password
+  private money: number;
+
+  constructor(public name: string) {
+    const keypair = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+
+    this.publicKey = keypair.publicKey;
+    this.privateKey = keypair.privateKey;
+
+    if (name == "Genesis") {
+      this.money = 100;
+    } else {
+      this.money = 0;
+    }
+  }
+
+  sendMoney(amount: number, payee: Wallet) {
+    if ((this.money > amount || this.money == amount) && amount > 0) {
+      let payeePublicKey = payee.publicKey;
+      const transaction = new Transaction(
+        amount,
+        this.publicKey,
+        payeePublicKey
+      );
+
+      const sign = crypto.createSign("SHA256");
+      sign.update(transaction.toString()).end(); // creates and adds the transaction to the sign object
+
+      const signature = sign.sign(this.privateKey); // signs the transaction with the private key
+
+      let status = Chain.instance.addBlock(
+        transaction,
+        this.publicKey,
+        signature
+      );
+
+      if (status) {
+        this.money -= amount;
+        payee.receiveMoney(amount);
+        console.log(`\n${this.name} sent ${amount} to ${payee.name}\n`.green);
+      }
+    } else {
+      console.log("Insufficient funds\n".red);
+    }
+  }
+
+  private receiveMoney(amount: number) {
+    this.money += amount;
+  }
+
+  drainMoney() {
+    this.money = 0;
+  }
+}
+
 class Chain {
   public static instance = new Chain(); // Singleton instance, only one chain can exist
 
   chain: Block[];
 
   constructor() {
-    this.chain = [new Block("", new Transaction(100, "Genesis", "Satoshi"))];
+    // this.chain = [new Block("", new Transaction(100, "Genesis", "Satoshi"))];
+    this.chain = [];
   }
 
   get lastBlock() {
@@ -75,7 +137,8 @@ class Chain {
     const isValid = verifier.verify(senderPublicKey, signature);
 
     if (isValid) {
-      const newBlock = new Block(this.lastBlock.hash, transaction);
+      const lastBlockHash = (this.lastBlock != null) ? this.lastBlock.hash : "";
+      const newBlock = new Block(lastBlockHash, transaction);
       newBlock.proofOfWork = this.mine(newBlock.nonce).solution;
       newBlock.hash = this.mine(newBlock.nonce).attempt;
       this.chain.push(newBlock);
@@ -86,65 +149,23 @@ class Chain {
   }
 }
 
-class Wallet {
-  public publicKey: string; // receiving money, like username
-  public privateKey: string; // spending money, like password
-  private money: number = 0;
-
-  constructor(public name: string) {
-    const keypair = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-
-    this.publicKey = keypair.publicKey;
-    this.privateKey = keypair.privateKey;
-  }
-
-  sendMoney(amount: number, payee: Wallet) {
-    if (this.money > amount) {
-      let payeePublicKey = payee.publicKey;
-      const transaction = new Transaction(
-        amount,
-        this.publicKey,
-        payeePublicKey
-      );
-
-      const sign = crypto.createSign("SHA256");
-      sign.update(transaction.toString()).end(); // creates and adds the transaction to the sign object
-
-      const signature = sign.sign(this.privateKey); // signs the transaction with the private key
-
-      let status = Chain.instance.addBlock(
-        transaction,
-        this.publicKey,
-        signature
-      );
-
-      if (status) {
-        this.money -= amount;
-        payee.receiveMoney(amount);
-        console.log(`\n${this.name} sent ${amount} to ${payee.name}\n`.green);
-      }
-    } else {
-      console.log("Insufficient funds\n".red);
-    }
-  }
-
-  private receiveMoney(amount: number) {
-    this.money += amount;
-  }
-}
 
 // example usage
 
+const genesis = new Wallet("Genesis");
 const satoshi = new Wallet("Satoshi");
-const bob = new Wallet("Bob");
-const alice = new Wallet("Alice");
+genesis.sendMoney(100, satoshi);
+genesis.drainMoney();
 
-satoshi.sendMoney(5, bob);
-bob.sendMoney(2, alice);
-alice.sendMoney(1, satoshi);
+const bob = new Wallet("Bob");
+genesis.sendMoney(100, bob); // Should return insufficient funds
+
+// const satoshi = new Wallet("Satoshi");
+// const bob = new Wallet("Bob");
+// const alice = new Wallet("Alice");
+
+// satoshi.sendMoney(5, bob);
+// bob.sendMoney(2, alice);
+// alice.sendMoney(1, satoshi);
 
 console.log(Chain.instance.chain);
