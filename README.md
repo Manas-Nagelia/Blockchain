@@ -7,7 +7,9 @@ I will not be working on this project anymore. This project was only meant for e
 
 Possible Updates:
 
-Implement a proof-of-stake system
-Improve the security
-Implement a GUI
-Improve the overall logic
+- Implement a proof-of-stake system
+- Improve the security
+- Implement a GUI
+- Improve the overall logic
+
+To install this, use `yarn install`
