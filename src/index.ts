@@ -14,6 +14,8 @@ class Transaction {
 
 class Block {
   public nonce = Math.round(Math.random() * 999999999);
+  public hash: string = "";
+  public proofOfWork: number = 0;
 
   constructor(
     public prevHash: string,
@@ -21,7 +23,7 @@ class Block {
     public ts = Date.now()
   ) {}
 
-  get hash() {
+  calculateHash() {
     const str = JSON.stringify(this); // stringify the prevHash, transaction, and timestamp
     const hash = crypto.createHash("SHA256");
     hash.update(str).end();
@@ -54,7 +56,7 @@ class Chain {
 
       if (attempt.substring(0, 4) === "0000") {
         console.log(`Solved ${solution}`);
-        return solution; // Proof of work
+        return { solution, attempt }; // Proof of work
       }
 
       solution += 1;
@@ -73,7 +75,8 @@ class Chain {
 
     if (isValid) {
       const newBlock = new Block(this.lastBlock.hash, transaction);
-      this.mine(newBlock.nonce);
+      newBlock.proofOfWork = this.mine(newBlock.nonce).solution;
+      newBlock.hash = this.mine(newBlock.nonce).attempt;
       this.chain.push(newBlock);
     }
   }
