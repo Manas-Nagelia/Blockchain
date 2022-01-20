@@ -1,4 +1,5 @@
 import * as crypto from "crypto";
+import "colors";
 
 class Transaction {
   constructor(
@@ -20,7 +21,7 @@ class Block {
   constructor(
     public prevHash: string,
     public transaction: Transaction,
-    public ts = Date.now()
+    public ts = new Date()
   ) {}
 
   calculateHash() {
@@ -78,6 +79,9 @@ class Chain {
       newBlock.proofOfWork = this.mine(newBlock.nonce).solution;
       newBlock.hash = this.mine(newBlock.nonce).attempt;
       this.chain.push(newBlock);
+      return true;
+    } else {
+      return false;
     }
   }
 }
@@ -85,8 +89,9 @@ class Chain {
 class Wallet {
   public publicKey: string; // receiving money, like username
   public privateKey: string; // spending money, like password
+  private money: number = 0;
 
-  constructor() {
+  constructor(public name: string) {
     const keypair = crypto.generateKeyPairSync("rsa", {
       modulusLength: 2048,
       publicKeyEncoding: { type: "spki", format: "pem" },
@@ -97,26 +102,49 @@ class Wallet {
     this.privateKey = keypair.privateKey;
   }
 
-  sendMoney(amount: number, payeePublicKey: string) {
-    const transaction = new Transaction(amount, this.publicKey, payeePublicKey);
+  sendMoney(amount: number, payee: Wallet) {
+    if (this.money > amount) {
+      let payeePublicKey = payee.publicKey;
+      const transaction = new Transaction(
+        amount,
+        this.publicKey,
+        payeePublicKey
+      );
 
-    const sign = crypto.createSign("SHA256");
-    sign.update(transaction.toString()).end(); // creates and adds the transaction to the sign object
+      const sign = crypto.createSign("SHA256");
+      sign.update(transaction.toString()).end(); // creates and adds the transaction to the sign object
 
-    const signature = sign.sign(this.privateKey); // signs the transaction with the private key
+      const signature = sign.sign(this.privateKey); // signs the transaction with the private key
 
-    Chain.instance.addBlock(transaction, this.publicKey, signature);
+      let status = Chain.instance.addBlock(
+        transaction,
+        this.publicKey,
+        signature
+      );
+
+      if (status) {
+        this.money -= amount;
+        payee.receiveMoney(amount);
+        console.log(`\n${this.name} sent ${amount} to ${payee.name}\n`.green);
+      }
+    } else {
+      console.log("Insufficient funds\n".red);
+    }
+  }
+
+  private receiveMoney(amount: number) {
+    this.money += amount;
   }
 }
 
 // example usage
 
-const satoshi = new Wallet();
-const bob = new Wallet();
-const alice = new Wallet();
+const satoshi = new Wallet("Satoshi");
+const bob = new Wallet("Bob");
+const alice = new Wallet("Alice");
 
-satoshi.sendMoney(50, bob.publicKey);
-bob.sendMoney(23, alice.publicKey);
-alice.sendMoney(5, bob.publicKey);
+satoshi.sendMoney(5, bob);
+bob.sendMoney(2, alice);
+alice.sendMoney(1, satoshi);
 
-console.log(Chain.instance);
+console.log(Chain.instance.chain);
