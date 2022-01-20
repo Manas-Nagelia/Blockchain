@@ -1,6 +1,7 @@
 import * as crypto from "crypto";
 import "colors";
 
+let createdGenesis = false;
 class Transaction {
   constructor(
     public amount: number,
@@ -47,8 +48,9 @@ class Wallet {
     this.publicKey = keypair.publicKey;
     this.privateKey = keypair.privateKey;
 
-    if (name == "Genesis") {
+    if (name == "Genesis" && !createdGenesis) {
       this.money = 100;
+      createdGenesis = true;
     } else {
       this.money = 0;
     }
@@ -139,8 +141,9 @@ class Chain {
     if (isValid) {
       const lastBlockHash = (this.lastBlock != null) ? this.lastBlock.hash : "";
       const newBlock = new Block(lastBlockHash, transaction);
-      newBlock.proofOfWork = this.mine(newBlock.nonce).solution;
-      newBlock.hash = this.mine(newBlock.nonce).attempt;
+      const { solution, attempt } = this.mine(newBlock.nonce);
+      newBlock.proofOfWork = solution;
+      newBlock.hash = attempt;
       this.chain.push(newBlock);
       return true;
     } else {
@@ -157,8 +160,8 @@ const satoshi = new Wallet("Satoshi");
 genesis.sendMoney(100, satoshi);
 genesis.drainMoney();
 
-const bob = new Wallet("Bob");
-genesis.sendMoney(100, bob); // Should return insufficient funds
+const bob = new Wallet("Genesis");
+bob.sendMoney(100, satoshi); // Should return insufficient funds
 
 // const satoshi = new Wallet("Satoshi");
 // const bob = new Wallet("Bob");
