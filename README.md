@@ -1,5 +1,5 @@
 # Blockchain
-This is a barebones blockchain I built using TypeScript!
+Barebones blockchain I built using TypeScript.
 
 Note that we're using a proof-of-work system here, rather than the preferred proof-of-stake.
 
